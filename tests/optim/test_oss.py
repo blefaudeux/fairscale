@@ -3,6 +3,10 @@
 # This source code is licensed under the BSD license found in the
 # LICENSE file in the root directory of this source tree.
 
+# pylint: disable=missing-module-docstring
+# pylint: disable=missing-class-docstring
+# pylint: disable=missing-function-docstring
+
 import os
 
 import pytest
@@ -12,7 +16,9 @@ import torch.multiprocessing as mp
 
 import fairscale.optim as optim
 
-skip_if_no_cuda = pytest.mark.skipif(not torch.cuda.is_available(), reason="cuda required")
+skip_if_no_cuda = pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="cuda required"
+)
 
 
 def setup_module(module):
@@ -149,7 +155,9 @@ def run_test_step_with_closure(rank, world_size):
 @skip_if_no_cuda
 def test_step_with_closure():
     world_size = 2
-    mp.spawn(run_test_step_with_closure, args=(world_size,), nprocs=world_size, join=True)
+    mp.spawn(
+        run_test_step_with_closure, args=(world_size,), nprocs=world_size, join=True
+    )
 
 
 def run_test_sharding(rank, world_size):
@@ -164,3 +172,30 @@ def run_test_sharding(rank, world_size):
 def test_sharding():
     world_size = 3
     mp.spawn(run_test_sharding, args=(world_size,), nprocs=world_size, join=True)
+
+
+def run_test_collect_shards(rank, world_size, reference_rank):
+    dist_init(rank, world_size)
+    params = []
+    for size in [5, 4, 2, 6, 4, 3]:
+        params.append(torch.rand(size, 1))
+    optimizer = optim.OSS(params, lr=0.1)
+
+    # Update the optimizer state on the reference rank
+    optimizer.consolidate_state_dict(recipient_rank=reference_rank)
+
+    # Fetch the state on the reference rank, check that it has the correct size
+    if rank == reference_rank:
+        assert sum(optimizer.global_state_dict) == world_size
+
+
+@skip_if_no_cuda
+def test_collect_shards():
+    world_size = 3
+    reference_rank = 1
+    mp.spawn(
+        run_test_collect_shards,
+        args=(world_size, reference_rank),
+        nprocs=world_size,
+        join=True,
+    )
