@@ -112,6 +112,9 @@ class OSS(Optimizer):
         global_optim_state = []
         local_state = self.state_dict()
 
+        if len(local_state["state"]) == 0:
+            return []
+
         for rank in range(dist.get_world_size(group=self.group)):
             if rank == self.rank:
                 logging.info("Saving self state")
@@ -120,6 +123,8 @@ class OSS(Optimizer):
                         local_state, non_blocking=True, device=torch.device("cpu")
                     )
                 )
+
+                # Sync with other replicas
                 broadcast_object(empty_buffer, src_rank=rank)
             else:
                 # Reuse the param_groups from this rank, these are shared across replicas
@@ -129,6 +134,7 @@ class OSS(Optimizer):
                     "param_groups": local_state["param_groups"],
                 }
 
+                # Fetch from the other replicas
                 global_optim_state.append(
                     recursive_copy_to_device(
                         replica_state, non_blocking=True, device=torch.device("cpu")
@@ -143,6 +149,10 @@ class OSS(Optimizer):
         Broadcast this rank's state shard, discard others
         """
         empty_buffer = torch.empty([1], dtype=torch.uint8)
+        local_state = self.state_dict()
+
+        if len(local_state["state"]) == 0:
+            return
 
         for rank in range(dist.get_world_size(group=self.group)):
             if rank == self.rank:
@@ -151,9 +161,9 @@ class OSS(Optimizer):
                     "Sending the sharded SGD state to the reference replica from rank %s",
                     self.rank,
                 )
-                broadcast_object(self.state_dict()["state"], src_rank=self.rank)
+                broadcast_object(local_state["state"], src_rank=self.rank)
             else:
-                # Discard this tensor/rank
+                # Discard this tensor/rank, broadcast necessary for syncing
                 logging.info("Discarding broadcast from rank %s", rank)
                 broadcast_object(empty_buffer, src_rank=rank)
 
@@ -178,8 +188,7 @@ class OSS(Optimizer):
         """
         assert (
             len(self._global_state_dict) > 0
-        ), "The optimizer state is not materialized, \
-             please call consolidate_state_dict on every replica beforehand"
+        ), "The optimizer state is not materialized, please call consolidate_state_dict on every replica beforehand"
 
         return self._global_state_dict
 
