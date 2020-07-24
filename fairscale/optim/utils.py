@@ -61,15 +61,15 @@ def broadcast_object(obj: Any, src_rank: int) -> Any:
         torch.save(obj, buffer)
         data = bytearray(buffer.getbuffer())
         length_tensor = torch.LongTensor([len(data)])
-        length_tensor = dist.broadcast(length_tensor, src=src_rank)
         data_tensor = torch.ByteTensor(data)
-        data_tensor = dist.broadcast(data_tensor, src=src_rank)
+        dist.broadcast(length_tensor, src=src_rank)
+        dist.broadcast(data_tensor, src=src_rank)
     else:
         # Fetch from the source
         length_tensor = torch.LongTensor([0])
-        length_tensor = dist.broadcast(length_tensor, src=src_rank)
+        dist.broadcast(length_tensor, src=src_rank)
         data_tensor = torch.empty([length_tensor.item()], dtype=torch.uint8)
-        data_tensor = dist.broadcast(data_tensor, src=src_rank)
+        dist.broadcast(data_tensor, src=src_rank)
         buffer = io.BytesIO(data_tensor.numpy())
         obj = torch.load(buffer)
     return obj

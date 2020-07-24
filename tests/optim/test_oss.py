@@ -187,7 +187,7 @@ def run_test_collect_shards(rank, world_size, reference_rank):
     # Run a dummy step so that the optimizer state dict exists
     batch, input_width, hidden, target_width = 3, 20, 10, 5
     target = torch.rand((batch, target_width), device=DEVICE)
-    x = torch.rand((batch, input_width), device=DEVICE)
+    inputs = torch.rand((batch, input_width), device=DEVICE)
 
     model = torch.nn.Sequential(
         torch.nn.Linear(input_width, hidden), torch.nn.Linear(hidden, target_width)
@@ -199,7 +199,7 @@ def run_test_collect_shards(rank, world_size, reference_rank):
 
     def closure():
         optimizer.zero_grad()
-        output = model(x)
+        output = model(inputs)
         loss = loss_fn(output, target)
         loss.backward()
         return loss
@@ -211,7 +211,7 @@ def run_test_collect_shards(rank, world_size, reference_rank):
 
     # Fetch the state on the reference rank, check that it has the correct size
     if rank == reference_rank:
-        assert sum(optimizer.global_state_dict) == world_size
+        assert len(optimizer.global_state_dict) == world_size
 
 
 def test_collect_shards():

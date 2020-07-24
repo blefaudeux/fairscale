@@ -159,9 +159,9 @@ class OSS(Optimizer):
                 # Send the state to the reference replica
                 logging.info(
                     "Sending the sharded SGD state to the reference replica from rank %s",
-                    self.rank,
+                    rank,
                 )
-                broadcast_object(local_state["state"], src_rank=self.rank)
+                broadcast_object(local_state["state"], src_rank=rank)
             else:
                 # Discard this tensor/rank, broadcast necessary for syncing
                 logging.info("Discarding broadcast from rank %s", rank)
@@ -169,6 +169,7 @@ class OSS(Optimizer):
 
     def consolidate_state_dict(self, recipient_rank: int = 0) -> List[dict]:
         """ Update the consolidated state_dict list, one per rank.
+
         This needs to be called on all replicas """
 
         if self.rank == recipient_rank:
@@ -177,15 +178,18 @@ class OSS(Optimizer):
             logging.info("Pulling the sharded SGD state from all replicas")
             self._global_state_dict = self._collect_state_dict()
         else:
+            # Acknowledge broadcasts, and send this rank's shard when needed
             self._broadcast_state_dict()
 
     @property
     def global_state_dict(self):
         """
-        Return the global optimizer state, which consist of a list of the shards.
-        This is limited to the replica which was responsible for the consolidation.
-        See consolidate_state_dict
+        Return the last known global optimizer state, which consist of a list of the shards.
+
+        NOTE: This is limited to the replica which was responsible for the consolidation.
+        The state may also not be up to date, depending on when `consolidate_state_dict` was last called
         """
+
         assert (
             len(self._global_state_dict) > 0
         ), "The optimizer state is not materialized, please call consolidate_state_dict on every replica beforehand"
